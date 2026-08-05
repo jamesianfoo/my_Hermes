@@ -47,7 +47,7 @@ const config = {
   },
 
   business: {
-    name: process.env.BUSINESS_NAME || 'the home inspection team',
+    name: process.env.BUSINESS_NAME || 'the design studio',
   },
 };
 

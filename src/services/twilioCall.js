@@ -58,6 +58,7 @@ async function alertOwner(lead, scoring) {
   const body = [
     `${scoring.tier} lead (${scoring.score}/10): ${lead.name || 'Unknown'}`,
     `${lead.phone || 'no phone'} | ${lead.serviceNeeded || 'service TBD'}`,
+    `Budget ${scoring.budgetSignal} | ${scoring.projectType} | ${scoring.timeline}`,
     `Est. $${scoring.estJobValue} | ${scoring.urgency}`,
     scoring.followUpNote,
   ].join('\n');

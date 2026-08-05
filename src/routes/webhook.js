@@ -177,11 +177,17 @@ router.post('/typeform', async function (req, res) {
       serviceNeeded: lead.serviceNeeded,
       score: scoring.score,
       tier: scoring.tier,
-      urgency: scoring.urgency,
+      urgency: [scoring.timeline, scoring.urgency].filter(Boolean).join(' - '),
       estJobValue: scoring.estJobValue,
       callMade: callResult.success,
       ownerAlerted: ownerAlerted,
-      keySignals: scoring.keySignals,
+      // Budget and project type ride in Key Signals so the sheet keeps its
+      // agreed 15 columns.
+      keySignals: [
+        'Budget: ' + scoring.budgetSignal,
+        'Type: ' + scoring.projectType,
+        scoring.keySignals,
+      ].filter(Boolean).join(' | '),
       followUpNote: scoring.followUpNote,
       problem: lead.problem,
       inspectionBooked: false,

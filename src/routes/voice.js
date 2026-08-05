@@ -295,7 +295,7 @@ router.post('/start', async function (req, res) {
 
   const greeting =
     'Hi' + (firstName ? ' ' + firstName : '') + ', this is the scheduling assistant with ' +
-    config.business.name + ', following up on your home inspection request. ' +
+    config.business.name + ', following up on your design enquiry. ' +
     'How can I help you?';
 
   const response = new VoiceResponse();
@@ -323,8 +323,8 @@ router.post('/problem', async function (req, res) {
   console.log('[voice/problem]', callSid, session.problem);
 
   const prompt = session.problem
-    ? 'Got it, thanks for explaining that. What day and time work best for the inspection?'
-    : 'No problem. What day and time work best for the inspection?';
+    ? 'Got it, thanks for explaining that. What day and time work best for a call?'
+    : 'No problem. What day and time work best for a call?';
 
   const response = new VoiceResponse();
   try {
@@ -366,7 +366,7 @@ router.post('/schedule', async function (req, res) {
       );
       return hangupWith(
         res,
-        'I am not seeing any open inspection times right now. I will have someone from the office ' +
+        'I am not seeing any open times right now. I will have someone from the studio ' +
           'call you back with options. Thanks, and have a great day.'
       );
     }
@@ -462,7 +462,7 @@ router.post('/confirm', async function (req, res) {
       return hangupWith(
         res,
         'I was not able to lock that in on my end. Someone from the office will call you right back to ' +
-          'confirm your inspection. Sorry about that, and thanks for your patience.'
+          'confirm your consultation. Sorry about that, and thanks for your patience.'
       );
     }
 
