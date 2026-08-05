@@ -261,6 +261,35 @@ function parseDatePreference(speech) {
   return isoDateInTz(addDays(now, 1));
 }
 
+/**
+ * Pull a clock time out of speech: "11", "11:30", "11 am", "2pm", "half past
+ * ten". Returns minutes since midnight, or null when no time was stated.
+ */
+function parseClockTime(speech) {
+  const text = String(speech || '').toLowerCase().replace(/\./g, '');
+
+  const match = text.match(/\b(\d{1,2})(?:[:.\s](\d{2}))?\s*(am|pm|o'?clock)?\b/);
+  if (!match) return null;
+
+  let hour = parseInt(match[1], 10);
+  const minute = match[2] ? parseInt(match[2], 10) : 0;
+  const meridiem = match[3];
+
+  if (hour < 1 || hour > 23 || minute > 59) return null;
+
+  if (meridiem === 'pm' && hour < 12) hour += 12;
+  else if (meridiem === 'am' && hour === 12) hour = 0;
+  else if (!meridiem || meridiem.indexOf('clock') !== -1) {
+    // No am/pm given. Use the part of day if stated, otherwise assume the
+    // business-hours reading: 1-7 means afternoon, 8-12 means morning.
+    if (/\bafternoon\b|\bevening\b|\btonight\b/.test(text) && hour < 12) hour += 12;
+    else if (/\bmorning\b/.test(text)) { /* leave as-is */ }
+    else if (hour >= 1 && hour <= 7) hour += 12;
+  }
+
+  return hour * 60 + minute;
+}
+
 /** Prefer a slot matching a stated part of day, otherwise the earliest. */
 function pickClosestSlot(slots, speech) {
   if (!slots.length) return null;
@@ -273,6 +302,21 @@ function pickClosestSlot(slots, speech) {
       10
     );
   };
+  const minutesOf = function (iso) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz(), hour: 'numeric', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date(iso));
+    const get = function (t) { return parseInt((parts.find(function (p) { return p.type === t; }) || {}).value, 10); };
+    return get('hour') * 60 + get('minute');
+  };
+
+  // An explicit time wins: offer whatever is nearest to what they asked for.
+  const wanted = parseClockTime(text);
+  if (wanted !== null) {
+    return sorted.slice().sort(function (a, b) {
+      return Math.abs(minutesOf(a) - wanted) - Math.abs(minutesOf(b) - wanted);
+    })[0];
+  }
 
   if (/\bmorning\b/.test(text)) {
     const morning = sorted.find(function (s) { return hourOf(s) < 12; });

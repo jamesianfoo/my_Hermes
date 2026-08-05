@@ -72,7 +72,13 @@ async function getAvailability(date) {
   }
 
   try {
-    const res = await cal.get('/slots', { params: params });
+    // /slots is versioned separately from /bookings: with the 2024-08-13
+    // header it 404s ("Cannot GET /v2/slots"), which silently looked like an
+    // empty calendar. Bookings stay on 2024-08-13.
+    const res = await cal.get('/slots', {
+      params: params,
+      headers: { 'cal-api-version': '2024-09-04' },
+    });
     const slots = extractSlots(res.data, date);
     console.log('[calcom] ' + slots.length + ' slot(s) for ' + date);
     return slots;
