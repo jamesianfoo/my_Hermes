@@ -42,7 +42,17 @@ How the three combine into the score:
 - Automation and UX outrank General at the same budget and timeline.
 - Low budget caps the score at 4 (Cold) even when the timeline is Immediate.
 - TimeX with High budget is still worth a call - it lands mid-to-high Warm.
-- Vague, generic, or obviously templated enquiries score low no matter what they claim.
+
+Score the stated budget, project type and timeline. Do NOT mark a lead down because
+its identity looks unusual or unverifiable. A personal email on a corporate enquiry,
+a job title that seems senior, a company you cannot verify, a misspelling, or terse
+answers are all normal in real enquiry forms, and none of them are evidence of a bad
+lead. Missing a real buyer is far more costly than one wasted call.
+
+Set "placeholderData": true ONLY for a submission that is obviously not a real person
+filling in a form - lorem ipsum, "test"/"asdf"/keyboard mash, example.com addresses,
+or fields explicitly labelled as a test. Genuine-but-odd details are not placeholder
+data. When placeholderData is true, score the lead 1-2.
 
 Return ONLY a JSON object, no prose and no markdown fences, with exactly these keys:
 {
@@ -51,6 +61,7 @@ Return ONLY a JSON object, no prose and no markdown fences, with exactly these k
   "budgetSignal": "High" | "Mid" | "Low",
   "projectType": "UX" | "Automation" | "General",
   "timeline": "Immediate" | "TimeX",
+  "placeholderData": <true only for obvious test/dummy submissions, else false>,
   "urgency": "<short phrase, e.g. 'Launching in 3 weeks'>",
   "estJobValue": <integer US dollars for the likely engagement>,
   "keySignals": "<comma separated short signals>",
@@ -155,10 +166,22 @@ async function scoreLead(lead) {
   const projectType = oneOf(parsed.projectType, ['UX', 'Automation', 'General'], 'General');
   const timeline = oneOf(parsed.timeline, ['Immediate', 'TimeX'], 'TimeX');
 
+  const placeholder = parsed.placeholderData === true;
+
   // Enforce the Low-budget cap in code rather than trusting the model to
   // remember it: a Low-budget lead must never be called.
   if (budgetSignal === 'Low' && score > 4) {
     score = 4;
+  }
+
+  // Floors, so a real buyer is never dropped over how their form looks. Only
+  // an outright placeholder submission escapes them.
+  if (!placeholder && budgetSignal !== 'Low') {
+    if (budgetSignal === 'High' && timeline === 'Immediate') {
+      score = Math.max(score, 8);
+    } else if (budgetSignal === 'High' || timeline === 'Immediate') {
+      score = Math.max(score, 5);
+    }
   }
 
   return {
