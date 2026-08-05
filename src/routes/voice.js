@@ -400,7 +400,7 @@ router.post('/start', async function (req, res) {
   const firstName = name ? String(name).split(/\s+/)[0] : '';
 
   const greeting =
-    'Hi' + (firstName ? ' ' + firstName : '') + ', this is ' + config.business.agentName +
+    'Hi' + (firstName ? ' ' + firstName : '') + ', this is ' + config.business.voiceAgentName +
     ' from ' + config.business.name + ', following up on your design enquiry. ' +
     'How can I help you?';
 
