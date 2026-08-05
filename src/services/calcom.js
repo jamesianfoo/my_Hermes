@@ -149,8 +149,12 @@ async function bookAppointment(startIso, lead) {
 
   try {
     const res = await cal.post('/bookings', body);
-    console.log('[calcom] booked', startIso, 'for', attendee.name);
-    return { success: true, booking: (res.data && res.data.data) || res.data };
+    const booking = (res.data && res.data.data) || res.data || {};
+    // Cal.com returns "pending" when the event type still wants manual
+    // approval, so the caller can word the confirmation honestly.
+    const confirmed = booking.status !== 'pending';
+    console.log('[calcom] booked', startIso, 'for', attendee.name, '- status:', booking.status);
+    return { success: true, booking: booking, confirmed: confirmed };
   } catch (err) {
     if (err.response) {
       console.error('[calcom] booking error status:', err.response.status);

@@ -245,8 +245,11 @@ router.post('/incoming', async function (req, res) {
 
       if (result.success) {
         chat.booked = true;
-        message = 'Done - you are booked in for ' + voiceRoutes.spokenSlot(chat.offeredSlot) +
-          '. You will get a confirmation shortly. Looking forward to it.';
+        message = result.confirmed
+          ? 'Done - you are booked in for ' + voiceRoutes.spokenSlot(chat.offeredSlot) +
+              '. You will get a confirmation shortly. Looking forward to it.'
+          : "I've requested " + voiceRoutes.spokenSlot(chat.offeredSlot) +
+              ' for you - you will get a confirmation once the team approves it.';
       } else {
         message = 'I could not lock that in on my end, sorry. Someone from the studio will ' +
           'message you shortly to confirm.';

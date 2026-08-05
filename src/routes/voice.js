@@ -608,12 +608,19 @@ router.post('/confirm', async function (req, res) {
     }
 
     session.booked = true;
-    await ensureLeadLogged(session, 'Booked ' + session.offeredSlot + ' on the call', true);
+    await ensureLeadLogged(
+      session,
+      'Booked ' + session.offeredSlot + ' on the call' + (result.confirmed ? '' : ' (awaiting approval)'),
+      true
+    );
 
     await hangupWith(
       res,
-      'You are all set for ' + spokenSlot(session.offeredSlot) + '. ' +
-        'You will get a confirmation shortly. Thanks, and we will see you then.',
+      result.confirmed
+        ? 'You are all set for ' + spokenSlot(session.offeredSlot) + '. ' +
+            'You will get a confirmation shortly. Thanks, and we will see you then.'
+        : 'I have requested ' + spokenSlot(session.offeredSlot) + ' for you. ' +
+            'You will get a confirmation once the team approves it. Thanks, and have a great day.',
       session
     );
   } catch (err) {
