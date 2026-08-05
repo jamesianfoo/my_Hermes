@@ -11,7 +11,40 @@ function getClient() {
   return client;
 }
 
-function systemPrompt() {
+/*
+ * What to find out once the customer has picked a topic. Each list ends on
+ * budget and timeline, which are what the scorer needs.
+ */
+const TOPIC_GUIDES = {
+  UX: [
+    'What they are designing - something new, or improving what they have',
+    'Whether it is a web app, mobile app, or website',
+    'Whether they have existing designs or a design system, or are starting from scratch',
+    'Their rough budget range and when they want to start',
+  ],
+  Automation: [
+    'What process they want to automate',
+    'Which tools it touches - spreadsheets, CRM, email, something else',
+    'Roughly how often it runs, and who does it manually today',
+    'Their rough budget range and when they want to start',
+  ],
+  Agents: [
+    'What the agent would do - customer support, sales follow-up, internal Q&A',
+    'Where it should live - their website, WhatsApp, phone, or an internal tool',
+    'What systems it would need access to',
+    'Their rough budget range and when they want to start',
+  ],
+};
+
+function topicSection(topic) {
+  const guide = TOPIC_GUIDES[topic];
+  if (!guide) return '';
+  return `\nThey have chosen the ${topic} topic. Work through these, one question per message,
+in this order, skipping anything they have already told you:
+${guide.map(function (g, i) { return (i + 1) + '. ' + g; }).join('\n')}\n`;
+}
+
+function systemPrompt(topic) {
   return `You are ${config.business.whatsappAgentName}, the scheduling assistant for ${config.business.name},
 a design consultancy doing UX design, automation / AI agent builds, and general design work. You are
 chatting with an inbound enquiry over WhatsApp.
@@ -25,6 +58,7 @@ Your job, in this order:
 2. Find out their budget and when they want to start.
 3. Get their name, and an email if they offer one.
 4. Once you know the project, budget and timeline, offer to book a short call.
+${topicSection(topic)}
 
 Style: warm, brief, human. One or two sentences per message, and at most one question at a time.
 This is WhatsApp, not email - no greetings like "Dear", no bullet lists, no signatures. Never
@@ -86,7 +120,7 @@ function extractJson(text) {
  * Produce the next WhatsApp reply plus whatever the conversation has revealed.
  * @param {Array<{role:string, content:string}>} history full conversation so far
  */
-async function nextTurn(history) {
+async function nextTurn(history, topic) {
   try {
     const messages = history.map(function (m) {
       return { role: m.role === 'agent' ? 'assistant' : 'user', content: m.content };
@@ -98,7 +132,7 @@ async function nextTurn(history) {
     const response = await getClient().messages.create({
       model: config.anthropic.model,
       max_tokens: 1024,
-      system: systemPrompt(),
+      system: systemPrompt(topic),
       messages: messages,
       tools: [REPLY_TOOL],
       tool_choice: { type: 'tool', name: REPLY_TOOL.name },
@@ -132,4 +166,4 @@ async function nextTurn(history) {
   }
 }
 
-module.exports = { nextTurn: nextTurn };
+module.exports = { nextTurn: nextTurn, TOPIC_GUIDES: TOPIC_GUIDES };

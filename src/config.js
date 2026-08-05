@@ -51,6 +51,7 @@ const config = {
     // Named per channel: the phone voice is male, so the two do not share a name.
     voiceAgentName: process.env.VOICE_AGENT_NAME || 'Cassian',
     whatsappAgentName: process.env.WHATSAPP_AGENT_NAME || 'Ivy',
+    website: process.env.BUSINESS_WEBSITE || '',
   },
 };
 

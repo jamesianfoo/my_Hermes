@@ -26,6 +26,34 @@ setInterval(function () {
   });
 }, 60 * 60 * 1000).unref();
 
+/*
+ * Opening message. Quick-reply buttons need a Twilio Content template, so the
+ * numbered list is what actually ships today — and it doubles as the fallback
+ * for anyone whose client does not render buttons.
+ */
+function welcomeMessage() {
+  return "Hi! I'm " + config.business.whatsappAgentName + ' from ' + config.business.name +
+    ' — thanks for getting in touch. What can we help you with?\n\n' +
+    '1️⃣ UX\n2️⃣ Automation\n3️⃣ AI Agents\n\n' +
+    'Reply with a number, or just tell me what you need.' +
+    (config.business.website ? '\n\nMore about us: ' + config.business.website : '');
+}
+
+const TOPIC_PATTERNS = [
+  { topic: 'UX', test: /^1\b|\bux\b|\bdesign\b|\bui\b|\bwireframe|\bprototype/i },
+  { topic: 'Automation', test: /^2\b|\bautomat|\bworkflow|\bintegrat|\bzapier|\bmake\b/i },
+  { topic: 'Agents', test: /^3\b|^ai\b|\bagent|\bchatbot|\bbot\b|\bllm\b/i },
+];
+
+/** Map a tapped button or typed reply onto a topic. */
+function detectTopic(body) {
+  const text = String(body || '').trim();
+  for (let i = 0; i < TOPIC_PATTERNS.length; i++) {
+    if (TOPIC_PATTERNS[i].test.test(text)) return TOPIC_PATTERNS[i].topic;
+  }
+  return null;
+}
+
 function getChat(from) {
   let chat = chats.get(from);
   if (!chat) {
@@ -156,8 +184,27 @@ router.post('/incoming', async function (req, res) {
   const chat = getChat(from);
   if (body) chat.history.push({ role: 'user', content: body });
 
+  // First contact: send the menu rather than asking Claude, so every customer
+  // gets the same opening and the topic buttons appear immediately.
+  if (!chat.greeted) {
+    chat.greeted = true;
+    const welcome = welcomeMessage();
+    chat.history.push({ role: 'agent', content: welcome });
+    return reply(res, welcome);
+  }
+
+  // Twilio puts a tapped quick-reply's payload in ButtonPayload/ButtonText.
+  const choice = req.body.ButtonPayload || req.body.ButtonText || body;
+  if (!chat.topic) {
+    const topic = detectTopic(choice);
+    if (topic) {
+      chat.topic = topic;
+      console.log('[whatsapp] topic:', topic, '-', chat.phone);
+    }
+  }
+
   try {
-    const turn = await whatsappAgent.nextTurn(chat.history);
+    const turn = await whatsappAgent.nextTurn(chat.history, chat.topic);
 
     // Remember anything new the customer revealed.
     ['name', 'email', 'serviceNeeded', 'projectSummary'].forEach(function (k) {
