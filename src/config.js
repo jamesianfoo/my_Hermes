@@ -36,6 +36,11 @@ const config = {
     eventTypeId: process.env.CAL_EVENT_TYPE_ID,
     username: process.env.CAL_USERNAME,
     eventTypeSlug: process.env.CAL_EVENT_TYPE_SLUG,
+    // Used when a lead books without giving an email; Cal.com requires one.
+    fallbackEmail: process.env.CAL_FALLBACK_EMAIL ||
+      (process.env.BUSINESS_WEBSITE
+        ? 'leads@' + String(process.env.BUSINESS_WEBSITE).replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+        : ''),
   },
 
   googleSheets: {

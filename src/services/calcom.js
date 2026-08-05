@@ -93,7 +93,23 @@ async function getAvailability(date) {
 }
 
 /**
- * Book an inspection.
+ * Stand-in address for a lead who never gave one, e.g.
+ * leads+61430044978@yourdomain.com. Plus-addressing keeps every booking
+ * distinct while delivering to one inbox the studio actually reads.
+ */
+function fallbackEmailFor(phone) {
+  const base = config.calcom.fallbackEmail;
+  if (!base || base.indexOf('@') === -1) return '';
+
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return base;
+
+  const parts = base.split('@');
+  return parts[0].split('+')[0] + '+' + digits + '@' + parts[1];
+}
+
+/**
+ * Book an appointment.
  * @param {string} startIso  ISO start time of the chosen slot
  * @param {{name?:string, email?:string, phone?:string}} lead
  * @returns {Promise<{success:boolean, booking?:object, error?:string}>}
@@ -110,6 +126,16 @@ async function bookAppointment(startIso, lead) {
   const email = lead && typeof lead.email === 'string' ? lead.email.trim() : '';
   if (email) {
     attendee.email = email;
+  } else {
+    // Cal.com rejects a booking with no email ("{email}error_required_field")
+    // even when a phone number is present. Rather than lose the booking, route
+    // the confirmation to the studio using a plus-address that stays unique
+    // per lead.
+    const fallback = fallbackEmailFor(lead && lead.phone);
+    if (fallback) {
+      attendee.email = fallback;
+      console.warn('[calcom] no lead email, booking under', fallback);
+    }
   }
   if (lead && lead.phone) {
     attendee.phoneNumber = lead.phone;
