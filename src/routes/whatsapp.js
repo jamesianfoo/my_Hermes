@@ -45,6 +45,21 @@ const TOPIC_PATTERNS = [
   { topic: 'Agents', test: /^3\b|^ai\b|\bagent|\bchatbot|\bbot\b|\bllm\b/i },
 ];
 
+/*
+ * A bare opener ("hi", "hello?", a wave emoji) gets the menu. Anything with
+ * actual content gets answered directly — being shown a menu after explaining
+ * your project reads as if nobody listened.
+ */
+const BARE_GREETING = /^(hi|hey|hello|yo|hiya|howdy|good\s*(morning|afternoon|evening|day)|g'?day|greetings|hi there|hello there)?[\s!.,?👋🙂😊]*$/i;
+
+function isBareGreeting(body) {
+  const text = String(body || '').trim();
+  if (!text) return true;
+  if (BARE_GREETING.test(text)) return true;
+  // Short and question-free with no topic word — still just an opener.
+  return text.split(/\s+/).length <= 3 && !detectTopic(text) && !/\?/.test(text);
+}
+
 /** Map a tapped button or typed reply onto a topic. */
 function detectTopic(body) {
   const text = String(body || '').trim();
@@ -184,13 +199,16 @@ router.post('/incoming', async function (req, res) {
   const chat = getChat(from);
   if (body) chat.history.push({ role: 'user', content: body });
 
-  // First contact: send the menu rather than asking Claude, so every customer
-  // gets the same opening and the topic buttons appear immediately.
+  // First contact. A bare "hi" gets the menu; a message that already says
+  // something gets answered directly.
   if (!chat.greeted) {
     chat.greeted = true;
-    const welcome = welcomeMessage();
-    chat.history.push({ role: 'agent', content: welcome });
-    return reply(res, welcome);
+    if (isBareGreeting(body)) {
+      const welcome = welcomeMessage();
+      chat.history.push({ role: 'agent', content: welcome });
+      return reply(res, welcome);
+    }
+    chat.openedWithDetail = true;
   }
 
   // Twilio puts a tapped quick-reply's payload in ButtonPayload/ButtonText.
