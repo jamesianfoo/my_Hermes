@@ -112,13 +112,22 @@ function fallbackScore(lead, reason) {
  * @param {{name?:string, phone?:string, email?:string, serviceNeeded?:string, problem?:string}} lead
  */
 async function scoreLead(lead) {
-  const userMessage = [
+  const parts = [
     `Name: ${lead.name || '(not provided)'}`,
     `Phone: ${lead.phone || '(not provided)'}`,
     `Email: ${lead.email || '(not provided)'}`,
     `Service needed: ${lead.serviceNeeded || '(not provided)'}`,
     `Problem / details: ${lead.problem || '(not provided)'}`,
-  ].join('\n');
+  ];
+
+  // The full form transcript. Budget and timeline questions usually live here
+  // rather than in the five named fields, so this is what the three dimensions
+  // are actually judged on.
+  if (lead.details) {
+    parts.push('', 'Full form submission, every question and answer:', lead.details);
+  }
+
+  const userMessage = parts.join('\n');
 
   let parsed;
   try {

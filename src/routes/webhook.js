@@ -69,7 +69,12 @@ function parseTypeform(body) {
     if (f.ref) titleById[f.ref] = f.title;
   });
 
-  const lead = { name: '', phone: '', email: '', serviceNeeded: '', problem: '' };
+  const lead = { name: '', phone: '', email: '', serviceNeeded: '', problem: '', details: '' };
+
+  // Every question and answer, verbatim. The five named fields above drive the
+  // call; this carries everything else (budget, timeline, whatever gets added
+  // to the form later) through to the scorer so no answer is ever dropped.
+  const transcript = [];
 
   answers.forEach(function (answer) {
     const field = answer.field || {};
@@ -80,13 +85,19 @@ function parseTypeform(body) {
     const value = answerValue(answer);
     if (!value) return;
 
+    const title = withTitle.field.title || '';
+    transcript.push((title ? title : 'Answer') + ': ' + value);
+
     if (!lead.name && matches(keys, ['name', 'full_name', 'your name'])) {
       lead.name = value;
     } else if (!lead.phone && (answer.type === 'phone_number' || matches(keys, ['phone', 'mobile', 'cell', 'number']))) {
       lead.phone = value;
     } else if (!lead.email && (answer.type === 'email' || matches(keys, ['email', 'e-mail']))) {
       lead.email = value;
-    } else if (!lead.serviceNeeded && matches(keys, ['service', 'inspection type', 'what type', 'need'])) {
+    } else if (!lead.serviceNeeded && matches(keys, [
+      'service', 'what type', 'need', 'looking for', 'help with', 'interested in',
+      'project type', 'what can we',
+    ])) {
       lead.serviceNeeded = value;
     } else if (!lead.problem && matches(keys, ['problem', 'issue', 'describe', 'details', 'concern', 'message', 'tell us'])) {
       lead.problem = value;
@@ -102,6 +113,14 @@ function parseTypeform(body) {
 
   lead.phone = String(lead.phone || '').trim();
   lead.email = String(lead.email || '').trim();
+  lead.details = transcript.join('\n');
+
+  // If the form has no dedicated "describe your project" question, fall back to
+  // the full transcript so the scorer still has something to judge and the
+  // sheet's Problem Description column is not blank.
+  if (!lead.problem && lead.details) {
+    lead.problem = lead.details;
+  }
 
   return lead;
 }
