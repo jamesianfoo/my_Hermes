@@ -19,11 +19,31 @@ const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
 
 function registerLead(callSid, lead, extra) {
   const session = Object.assign(
-    { lead: lead, createdAt: Date.now(), problem: '', preferredTime: '', offeredSlot: null, booked: false },
+    {
+      lead: lead,
+      createdAt: Date.now(),
+      problem: '',
+      preferredTime: '',
+      offeredSlot: null,
+      booked: false,
+      turns: [],
+    },
     extra || {}
   );
   sessions.set(callSid, session);
   return session;
+}
+
+/** Record one side of the conversation, in order. */
+function recordTurn(session, speaker, text) {
+  if (!session || !text) return;
+  if (!session.turns) session.turns = [];
+  session.turns.push(speaker + ': ' + String(text).trim());
+}
+
+/** The conversation so far, as plain text for the sheet. */
+function transcriptOf(session) {
+  return (session && session.turns ? session.turns : []).join('\n');
 }
 
 function getSession(callSid) {
@@ -77,6 +97,12 @@ async function ensureLeadLogged(session, outcome, booked) {
         session.outcomeRecorded = true;
         await withTimeout(googleSheets.appendFollowUpNote(session.sheetRowRange, outcome), 'note append');
       }
+      // Rewritten each time so the row always holds the whole conversation,
+      // however far it got.
+      const transcript = transcriptOf(session);
+      if (transcript) {
+        await withTimeout(googleSheets.updateCell(session.sheetRowRange, 'P', transcript), 'transcript');
+      }
       return;
     }
 
@@ -102,6 +128,7 @@ async function ensureLeadLogged(session, outcome, booked) {
       followUpNote: [scoring.followUpNote, outcome].filter(Boolean).join(' | '),
       problem: session.problem || lead.problem,
       inspectionBooked: Boolean(booked),
+      transcript: transcriptOf(session),
     }), 'lead log');
 
     if (result.success) {
@@ -138,7 +165,8 @@ async function speak(node, text) {
 /**
  * Build a <Gather> that speaks a prompt and posts the speech result to `action`.
  */
-async function gather(response, text, action) {
+async function gather(response, text, action, session) {
+  recordTurn(session, 'Agent', text);
   const g = response.gather({
     input: 'speech',
     action: action,
@@ -155,7 +183,8 @@ function send(res, response) {
   res.type('text/xml').send(response.toString());
 }
 
-async function hangupWith(res, text) {
+async function hangupWith(res, text, session) {
+  recordTurn(session, 'Agent', text);
   const response = new VoiceResponse();
   await speak(response, text);
   response.hangup();
@@ -300,7 +329,7 @@ router.post('/start', async function (req, res) {
 
   const response = new VoiceResponse();
   try {
-    await gather(response, greeting, '/voice/problem');
+    await gather(response, greeting, '/voice/problem', session);
     // If the caller says nothing at all, retry once before giving up.
     await speak(response, 'Sorry, I did not catch that. I will try you again later. Goodbye.');
     response.hangup();
@@ -308,7 +337,7 @@ router.post('/start', async function (req, res) {
   } catch (err) {
     console.error('[voice/start]', err.message);
     await ensureLeadLogged(session, 'Call failed at greeting: ' + err.message, false);
-    await hangupWith(res, 'Sorry, we are having a technical problem. We will call you back shortly.');
+    await hangupWith(res, 'Sorry, we are having a technical problem. We will call you back shortly.', session);
   }
 });
 
@@ -320,6 +349,7 @@ router.post('/problem', async function (req, res) {
   const callSid = req.body.CallSid;
   const session = getSession(callSid);
   session.problem = req.body.SpeechResult || '';
+  recordTurn(session, 'Caller', session.problem);
   console.log('[voice/problem]', callSid, session.problem);
 
   const prompt = session.problem
@@ -328,14 +358,14 @@ router.post('/problem', async function (req, res) {
 
   const response = new VoiceResponse();
   try {
-    await gather(response, prompt, '/voice/schedule');
+    await gather(response, prompt, '/voice/schedule', session);
     await speak(response, 'I did not catch a day. Someone from our team will follow up with you. Goodbye.');
     response.hangup();
     send(res, response);
   } catch (err) {
     console.error('[voice/problem]', err.message);
     await ensureLeadLogged(session, 'Call failed after problem step: ' + err.message, false);
-    await hangupWith(res, 'Sorry, we are having a technical problem. We will call you back shortly.');
+    await hangupWith(res, 'Sorry, we are having a technical problem. We will call you back shortly.', session);
   }
 });
 
@@ -347,6 +377,7 @@ router.post('/schedule', async function (req, res) {
   const callSid = req.body.CallSid;
   const session = getSession(callSid);
   session.preferredTime = req.body.SpeechResult || '';
+  recordTurn(session, 'Caller', session.preferredTime);
   console.log('[voice/schedule]', callSid, session.preferredTime);
 
   try {
@@ -367,7 +398,8 @@ router.post('/schedule', async function (req, res) {
       return hangupWith(
         res,
         'I am not seeing any open times right now. I will have someone from the studio ' +
-          'call you back with options. Thanks, and have a great day.'
+          'call you back with options. Thanks, and have a great day.',
+        session
       );
     }
 
@@ -377,7 +409,8 @@ router.post('/schedule', async function (req, res) {
     await gather(
       response,
       'The closest opening I have is ' + spokenSlot(slot) + '. Does that work for you?',
-      '/voice/confirm'
+      '/voice/confirm',
+      session
     );
     await speak(response, 'I did not hear an answer. Someone will follow up to confirm. Goodbye.');
     response.hangup();
@@ -385,7 +418,7 @@ router.post('/schedule', async function (req, res) {
   } catch (err) {
     console.error('[voice/schedule]', err.message);
     await ensureLeadLogged(session, 'Calendar lookup failed: ' + err.message, false);
-    await hangupWith(res, 'Sorry, I had trouble checking the calendar. Someone will call you right back.');
+    await hangupWith(res, 'Sorry, I had trouble checking the calendar. Someone will call you right back.', session);
   }
 });
 
@@ -397,12 +430,13 @@ router.post('/confirm', async function (req, res) {
   const callSid = req.body.CallSid;
   const session = getSession(callSid);
   const speech = req.body.SpeechResult || '';
+  recordTurn(session, 'Caller', speech);
   console.log('[voice/confirm]', callSid, speech);
 
   try {
     if (!session.offeredSlot) {
       await ensureLeadLogged(session, 'Lost offered slot mid-call - needs manual callback', false);
-      return hangupWith(res, 'Sorry, I lost track of that time. Someone will call you back to schedule. Goodbye.');
+      return hangupWith(res, 'Sorry, I lost track of that time. Someone will call you back to schedule. Goodbye.', session);
     }
 
     if (saidNo(speech) && !saidYes(speech)) {
@@ -418,7 +452,8 @@ router.post('/confirm', async function (req, res) {
         );
         return hangupWith(
           res,
-          'No problem. I will have the office call you with more options. Thanks for your time.'
+          'No problem. I will have the office call you with more options. Thanks for your time.',
+          session
         );
       }
 
@@ -427,7 +462,8 @@ router.post('/confirm', async function (req, res) {
       await gather(
         response,
         'No problem. I also have ' + spokenSlot(alternative) + '. Does that one work?',
-        '/voice/confirm'
+        '/voice/confirm',
+        session
       );
       await speak(response, 'I did not hear an answer. Someone will follow up. Goodbye.');
       response.hangup();
@@ -439,7 +475,8 @@ router.post('/confirm', async function (req, res) {
       await gather(
         response,
         'Sorry, I did not catch that. Should I book ' + spokenSlot(session.offeredSlot) + '? Please say yes or no.',
-        '/voice/confirm'
+        '/voice/confirm',
+        session
       );
       await speak(response, 'I did not hear an answer. Someone will follow up. Goodbye.');
       response.hangup();
@@ -462,7 +499,8 @@ router.post('/confirm', async function (req, res) {
       return hangupWith(
         res,
         'I was not able to lock that in on my end. Someone from the office will call you right back to ' +
-          'confirm your consultation. Sorry about that, and thanks for your patience.'
+          'confirm your consultation. Sorry about that, and thanks for your patience.',
+        session
       );
     }
 
@@ -472,12 +510,13 @@ router.post('/confirm', async function (req, res) {
     await hangupWith(
       res,
       'You are all set for ' + spokenSlot(session.offeredSlot) + '. ' +
-        'You will get a confirmation shortly. Thanks, and we will see you then.'
+        'You will get a confirmation shortly. Thanks, and we will see you then.',
+      session
     );
   } catch (err) {
     console.error('[voice/confirm]', err.message);
     await ensureLeadLogged(session, 'Call failed during booking: ' + err.message, false);
-    await hangupWith(res, 'Sorry, something went wrong on our end. Someone will call you right back.');
+    await hangupWith(res, 'Sorry, something went wrong on our end. Someone will call you right back.', session);
   }
 });
 

@@ -19,6 +19,7 @@ const HEADERS = [
   'Follow Up Note',
   'Problem Description',
   'Inspection Booked',
+  'Call Transcript',
 ];
 
 let sheetsClient = null;
@@ -84,14 +85,15 @@ function isConfigured() {
 
 async function ensureHeaderRow() {
   const sheets = getSheets();
-  const range = config.googleSheets.sheetName + '!A1:O1';
+  const range = config.googleSheets.sheetName + '!A1:P1';
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: config.googleSheets.spreadsheetId,
     range: range,
   });
 
   const existing = (res.data.values && res.data.values[0]) || [];
-  if (existing.length === 0) {
+  // Also upgrades a sheet that was created before a column was added.
+  if (existing.length < HEADERS.length) {
     await sheets.spreadsheets.values.update({
       spreadsheetId: config.googleSheets.spreadsheetId,
       range: range,
@@ -128,13 +130,14 @@ async function logLead(entry) {
     entry.followUpNote || '',
     entry.problem || '',
     entry.inspectionBooked ? 'Yes' : 'No',
+    entry.transcript || '',
   ];
 
   try {
     await ensureHeaderRow();
     const res = await getSheets().spreadsheets.values.append({
       spreadsheetId: config.googleSheets.spreadsheetId,
-      range: config.googleSheets.sheetName + '!A:O',
+      range: config.googleSheets.sheetName + '!A:P',
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values: [row] },
