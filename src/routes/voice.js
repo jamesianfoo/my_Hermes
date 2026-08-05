@@ -662,3 +662,7 @@ router.post('/status', function (req, res) {
 module.exports = router;
 module.exports.registerLead = registerLead;
 module.exports.sessions = sessions;
+// Shared with the WhatsApp channel so both speak about times the same way.
+module.exports.spokenSlot = spokenSlot;
+module.exports.parseDatePreference = parseDatePreference;
+module.exports.findSlot = findSlot;

@@ -7,6 +7,7 @@ const express = require('express');
 const config = require('./config');
 const webhookRoutes = require('./routes/webhook');
 const voiceRoutes = require('./routes/voice');
+const whatsappRoutes = require('./routes/whatsapp');
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.get('/health', function (req, res) {
 
 app.use('/webhook', webhookRoutes);
 app.use('/voice', voiceRoutes);
+app.use('/whatsapp', whatsappRoutes);
 
 app.use(function (req, res) {
   res.status(404).json({ error: 'Not found' });
