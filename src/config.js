@@ -48,6 +48,8 @@ const config = {
 
   business: {
     name: process.env.BUSINESS_NAME || 'the design studio',
+    // What the assistant calls itself on calls and in chat.
+    agentName: process.env.AGENT_NAME || 'Ivy',
   },
 };
 

@@ -400,8 +400,8 @@ router.post('/start', async function (req, res) {
   const firstName = name ? String(name).split(/\s+/)[0] : '';
 
   const greeting =
-    'Hi' + (firstName ? ' ' + firstName : '') + ', this is the scheduling assistant with ' +
-    config.business.name + ', following up on your design enquiry. ' +
+    'Hi' + (firstName ? ' ' + firstName : '') + ', this is ' + config.business.agentName +
+    ' from ' + config.business.name + ', following up on your design enquiry. ' +
     'How can I help you?';
 
   const response = new VoiceResponse();
