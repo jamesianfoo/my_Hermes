@@ -165,12 +165,17 @@ async function speak(node, text) {
 /**
  * Build a <Gather> that speaks a prompt and posts the speech result to `action`.
  */
+// Seconds of silence before Twilio gives up waiting for the caller to START
+// speaking. The default of 5 is not long enough for someone opening a calendar.
+const SPEECH_START_TIMEOUT = 8;
+
 async function gather(response, text, action, session) {
   recordTurn(session, 'Agent', text);
   const g = response.gather({
     input: 'speech',
     action: action,
     method: 'POST',
+    timeout: SPEECH_START_TIMEOUT,
     speechTimeout: 'auto',
     speechModel: 'phone_call',
     actionOnEmptyResult: true,
@@ -178,6 +183,34 @@ async function gather(response, text, action, session) {
   await speak(g, text);
   return g;
 }
+
+/**
+ * Handle a step where the caller said nothing: re-ask once, then bow out
+ * politely rather than looping forever.
+ * Returns true when it has already responded.
+ */
+async function handleSilence(session, res, step, question, action) {
+  if (!session.retries) session.retries = {};
+  session.retries[step] = (session.retries[step] || 0) + 1;
+
+  if (session.retries[step] <= MAX_RETRIES) {
+    const response = new VoiceResponse();
+    await gather(response, 'Sorry, I did not catch that. ' + question, action, session);
+    send(res, response);
+    return true;
+  }
+
+  await ensureLeadLogged(session, 'Caller did not respond at the "' + step + '" step', false);
+  await hangupWith(
+    res,
+    'No problem, I will let the team know and someone will follow up with you directly. ' +
+      'Thanks for your time, and have a great day.',
+    session
+  );
+  return true;
+}
+
+const MAX_RETRIES = 1;
 
 function send(res, response) {
   res.type('text/xml').send(response.toString());
@@ -394,7 +427,14 @@ router.post('/problem', async function (req, res) {
   const session = getSession(callSid);
   session.problem = req.body.SpeechResult || '';
   recordTurn(session, 'Caller', session.problem);
-  console.log('[voice/problem]', callSid, session.problem);
+  console.log('[voice/problem]', callSid, session.problem || '(silence)');
+
+  if (!session.problem) {
+    return handleSilence(
+      session, res, 'how can I help',
+      'What can we help you with?', '/voice/problem'
+    );
+  }
 
   const prompt = session.problem
     ? 'Got it, thanks for explaining that. What day and time work best for a call?'
@@ -422,7 +462,14 @@ router.post('/schedule', async function (req, res) {
   const session = getSession(callSid);
   session.preferredTime = req.body.SpeechResult || '';
   recordTurn(session, 'Caller', session.preferredTime);
-  console.log('[voice/schedule]', callSid, session.preferredTime);
+  console.log('[voice/schedule]', callSid, session.preferredTime || '(silence)');
+
+  if (!session.preferredTime) {
+    return handleSilence(
+      session, res, 'preferred time',
+      'Take your time. What day and time work best for a call?', '/voice/schedule'
+    );
+  }
 
   try {
     const targetDate = parseDatePreference(session.preferredTime);
@@ -515,6 +562,18 @@ router.post('/confirm', async function (req, res) {
     }
 
     if (!saidYes(speech)) {
+      // Silence or something unrecognisable — re-ask, but only once.
+      if (!session.retries) session.retries = {};
+      session.retries.confirm = (session.retries.confirm || 0) + 1;
+      if (session.retries.confirm > MAX_RETRIES + 1) {
+        await ensureLeadLogged(session, 'Caller never confirmed the offered slot', false);
+        return hangupWith(
+          res,
+          'No problem, I will have someone follow up to lock in a time. Thanks for your time.',
+          session
+        );
+      }
+
       const response = new VoiceResponse();
       await gather(
         response,
